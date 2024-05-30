@@ -103,7 +103,7 @@ pub fn verify<E: Pairing, R: RngCore>(
 
     // verify tau is correct
     let tau = calculate_hash(
-    &vec![
+            &vec![
                 HashBox::<E>{ object: cm_pa.0 },
                 HashBox::<E>{ object: cm_pb.0 },
                 HashBox::<E>{ object: cm_q.0 },
@@ -151,6 +151,7 @@ fn compute_polynomials<E: Pairing>(
             E::ScalarField::from(*val)
         })
         .collect();
+    // fill the left space with one, this doesn't break the completeness/soundness, just in case that the number of input values is not the power of two
     let ones = vec![E::ScalarField::one(); domain_size - degree];
     a_evals.extend(ones);
 
@@ -170,7 +171,7 @@ fn compute_polynomials<E: Pairing>(
     let last_omega = domain.element(domain_size - 1);
     let x_minus_last_omega = DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![-last_omega, E::ScalarField::one()]);
 
-    // compute w = [P_B(Xw) - P_B(X)*P_A(X)] * (X - w^{degree-1})
+    // compute w = [P_B(Xw) - P_B(X)*P_A(X)] * (X - w^{n-1})
     let mut w = &pb_shifted * &pa;
     w = &pb - &w;
     w = &w * &x_minus_last_omega;
