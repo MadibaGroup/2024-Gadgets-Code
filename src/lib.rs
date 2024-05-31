@@ -8,7 +8,7 @@ mod tests {
     use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
     use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
     use ark_std::{rand::{distributions::Uniform, Rng}, test_rng};
-    use prod_check::verify;
+    use prod_check::{verify_evaluations, verify_product};
     use types::UniPoly_381;
 
     use super::*;
@@ -53,7 +53,11 @@ mod tests {
             prepared_h: pp.prepared_h.clone(),
             prepared_beta_h: pp.prepared_beta_h.clone(),
         };
-        // verify the proof
-        verify(vk, proof, domain, degree, rng);
+
+        // verify the product is correct
+        verify_product(&values, &proof);
+
+        // verify the evaluations are correct and polynomials are vanishing
+        verify_evaluations(vk, &proof, domain, degree, rng);
     }
 }

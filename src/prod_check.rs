@@ -17,7 +17,7 @@ pub fn prove<E: Pairing, R: RngCore>(
     // compute polynomials, P_A(X), P_B(X), Q1(X) and Q2(X)
     // where Q1(X) = [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) / Z(X)
     // Q2(X) = [P_A(X) - P_B(X)] * Z(X) / (X - w^{degree-1})
-    let (pa, pb, q_w1, q_w2) = compute_polynomials::<E>(domain, values);
+    let (pa, pb, q1, q2) = compute_polynomials::<E>(domain, values);
 
     // commit to P_A
     let (cm_pa, mask_pa) = 
@@ -41,8 +41,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     let (cm_q1, mask_q1) = 
         KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
-            &q_w1, 
-            Some(q_w1.degree()), 
+            &q1, 
+            Some(q1.degree()), 
             Some(rng)
         ).unwrap();
 
@@ -50,8 +50,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     let (cm_q2, mask_q2) = 
         KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
-            &q_w2, 
-            Some(q_w2.degree()), 
+            &q2, 
+            Some(q2.degree()), 
             Some(rng)
         ).unwrap();
 
@@ -65,10 +65,10 @@ pub fn prove<E: Pairing, R: RngCore>(
             ]
         );
 
-    // open the evaluations at tau for P_A, P_B and Q
+    // open the evaluations at tau for P_A, P_B, Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
-        &vec![&pa, &pb, &q_w1, &q_w2], 
+        &vec![&pa, &pb, &q1, &q2], 
         &vec![&mask_pa, &mask_pb, &mask_q1, &mask_q2], 
         tau, 
         false, 
@@ -87,25 +87,49 @@ pub fn prove<E: Pairing, R: RngCore>(
         rng
     );
 
+    // open the evaluation at 1 for P_B, i.e., the product
+    let (h3, open_evals3, gamma3) = batch_open(
+        powers, 
+        &vec![&pb], 
+        &vec![&mask_pb], 
+        E::ScalarField::one(), 
+        false, 
+        rng
+    );
+
     // construct the proof
     BatchCheckProof {
         commitments: vec![
             vec![cm_pa, cm_pb, cm_q1, cm_q2],
             vec![cm_pb],
+            vec![cm_pb],
         ],
-        witnesses: vec![h1, h2],
-        points: vec![tau, tau * omega],
+        witnesses: vec![h1, h2, h3],
+        points: vec![tau, tau * omega, E::ScalarField::one()],
         open_evals: vec![
             open_evals1,
             open_evals2,
+            open_evals3,
         ],
-        gammas: vec![gamma1, gamma2],
+        gammas: vec![gamma1, gamma2, gamma3],
     }
 }
 
-pub fn verify<E: Pairing, R: RngCore>(
+/// verify the product is correct
+pub fn verify_product<E: Pairing>(
+    values: &Vec<u64>,
+    proof: &BatchCheckProof<E>,
+) {
+    let prod: E::ScalarField = values.iter()
+        .map(| val | E::ScalarField::from(*val))
+        .product();
+    assert_eq!(prod, proof.open_evals[2][0].into_plain_value().0);
+}
+
+/// verify the evaluations are correct and polynomials are vanishing
+pub fn verify_evaluations<E: Pairing, R: RngCore>(
     vk: VerifierKey<E>,
-    proof: BatchCheckProof<E>,
+    proof: &BatchCheckProof<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
     degree: usize,
     rng: &mut R,
@@ -144,7 +168,7 @@ pub fn verify<E: Pairing, R: RngCore>(
     let domain_size = domain.size as usize;
     let last_omega = domain.element(domain_size - 1);
 
-    // verify [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
+    // verify [P_B(X) - P_B(Xw) * P_A(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
     let lhs = (*pb_tau - pb_tau_omega.mul(pa_tau)) * (tau - last_omega);
     let rhs = z_tau * q1_tau;
     assert_eq!(lhs, rhs);
@@ -206,7 +230,7 @@ fn compute_polynomials<E: Pairing>(
     let z = DenseOrSparsePolynomial::from(domain.vanishing_polynomial());
 
     // W_1(X) / Z(X), the remainder should be zero polynomial
-    let (q_w1, r) = DenseOrSparsePolynomial::from(w1).divide_with_q_and_r(&z).unwrap();
+    let (q1, r) = DenseOrSparsePolynomial::from(w1).divide_with_q_and_r(&z).unwrap();
     assert!(r.is_zero());
 
     // construct the polynomial, X - w^{degree-1}
@@ -222,10 +246,10 @@ fn compute_polynomials<E: Pairing>(
     w2 = &w2 * &zed;
 
     // W_2(X) / Z(X), the remainder should be zero polynomial
-    let (q_w2, r) = DenseOrSparsePolynomial::from(w2).divide_with_q_and_r(&z).unwrap();
+    let (q2, r) = DenseOrSparsePolynomial::from(w2).divide_with_q_and_r(&z).unwrap();
     assert!(r.is_zero());
 
-    (pa, pb, q_w1, q_w2)
+    (pa, pb, q1, q2)
 }
 
 fn compute_accumulator<F: FftField>(evals: &Vec<F>) -> Vec<F> {
