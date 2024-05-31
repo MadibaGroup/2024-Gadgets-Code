@@ -14,8 +14,10 @@ pub fn prove<E: Pairing, R: RngCore>(
     domain: Radix2EvaluationDomain<E:: ScalarField>,
     rng: &mut R,
 ) -> BatchCheckProof<E> {
-    // compute polynomials, P_A(X), P_B(X) and Q(X), where Q(X) = [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) / Z(X)
-    let (pa, pb, q) = compute_polynomials::<E>(domain, values);
+    // compute polynomials, P_A(X), P_B(X), Q1(X) and Q2(X)
+    // where Q1(X) = [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) / Z(X)
+    // Q2(X) = [P_A(X) - P_B(X)] * Z(X) / (X - w^{degree-1})
+    let (pa, pb, q_w1, q_w2) = compute_polynomials::<E>(domain, values);
 
     // commit to P_A
     let (cm_pa, mask_pa) = 
@@ -35,12 +37,21 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // commit to Q
-    let (cm_q, mask_q) = 
+    // commit to Q1
+    let (cm_q1, mask_q1) = 
         KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
-            &q, 
-            Some(q.degree()), 
+            &q_w1, 
+            Some(q_w1.degree()), 
+            Some(rng)
+        ).unwrap();
+
+    // commit to Q2
+    let (cm_q2, mask_q2) = 
+        KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
+            &powers, 
+            &q_w2, 
+            Some(q_w2.degree()), 
             Some(rng)
         ).unwrap();
 
@@ -49,15 +60,16 @@ pub fn prove<E: Pairing, R: RngCore>(
         &vec![
                 HashBox::<E>{ object: cm_pa.0 },
                 HashBox::<E>{ object: cm_pb.0 },
-                HashBox::<E>{ object: cm_q.0 },
+                HashBox::<E>{ object: cm_q1.0 },
+                HashBox::<E>{ object: cm_q2.0 },
             ]
         );
 
     // open the evaluations at tau for P_A, P_B and Q
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
-        &vec![&pa, &pb, &q], 
-        &vec![&mask_pa, &mask_pb, &mask_q], 
+        &vec![&pa, &pb, &q_w1, &q_w2], 
+        &vec![&mask_pa, &mask_pb, &mask_q1, &mask_q2], 
         tau, 
         false, 
         rng
@@ -78,7 +90,7 @@ pub fn prove<E: Pairing, R: RngCore>(
     // construct the proof
     BatchCheckProof {
         commitments: vec![
-            vec![cm_pa, cm_pb, cm_q],
+            vec![cm_pa, cm_pb, cm_q1, cm_q2],
             vec![cm_pb],
         ],
         witnesses: vec![h1, h2],
@@ -95,18 +107,21 @@ pub fn verify<E: Pairing, R: RngCore>(
     vk: VerifierKey<E>,
     proof: BatchCheckProof<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
+    degree: usize,
     rng: &mut R,
 ) {
     let cm_pa = proof.commitments[0][0];
     let cm_pb = proof.commitments[0][1];
-    let cm_q = proof.commitments[0][2];
+    let cm_q1 = proof.commitments[0][2];
+    let cm_q2 = proof.commitments[0][3];
 
     // verify tau is correct
     let tau = calculate_hash(
             &vec![
                 HashBox::<E>{ object: cm_pa.0 },
                 HashBox::<E>{ object: cm_pb.0 },
-                HashBox::<E>{ object: cm_q.0 },
+                HashBox::<E>{ object: cm_q1.0 },
+                HashBox::<E>{ object: cm_q2.0 },
             ]
         );
     assert_eq!(tau, proof.points[0]);
@@ -115,10 +130,10 @@ pub fn verify<E: Pairing, R: RngCore>(
     let omega = domain.element(1);
     assert_eq!(tau * omega, proof.points[1]);
 
-    // read the evaluations of P_A(tau), P_B(tau), Q(tau), P_B(tau*omega)
+    // read the evaluations of P_A(tau), P_B(tau), Q1(tau), P_B(tau*omega)
     let pa_tau = &proof.open_evals[0][0].into_plain_value().0;
     let pb_tau = &proof.open_evals[0][1].into_plain_value().0;
-    let q_tau = &proof.open_evals[0][2].into_plain_value().0;
+    let q1_tau = &proof.open_evals[0][2].into_plain_value().0;
     let pb_tau_omega = &proof.open_evals[1][0].into_plain_value().0;
 
     // evaluate Z(X) at tau
@@ -129,9 +144,20 @@ pub fn verify<E: Pairing, R: RngCore>(
     let domain_size = domain.size as usize;
     let last_omega = domain.element(domain_size - 1);
 
-    // verify [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) = Z(X) * Q(X)
+    // verify [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
     let lhs = (*pb_tau - pb_tau_omega.mul(pa_tau)) * (tau - last_omega);
-    let rhs = z_tau * q_tau;
+    let rhs = z_tau * q1_tau;
+    assert_eq!(lhs, rhs);
+
+    // compute w^{degree-1}
+    let omega_degree = domain.element(degree - 1);
+
+    // read the evaluation of Q2(tau)
+    let q2_tau = &proof.open_evals[0][3].into_plain_value().0;
+
+    // verify [P_A(X) - P_B(X)] / (X - w^{degree-1}) = Q2(X)
+    let lhs = (*pa_tau - pb_tau) / (tau - omega_degree);
+    let rhs = *q2_tau;
     assert_eq!(lhs, rhs);
 
     batch_check(&vk, &proof, rng);
@@ -141,7 +167,7 @@ pub fn verify<E: Pairing, R: RngCore>(
 fn compute_polynomials<E: Pairing>(
     domain: Radix2EvaluationDomain<E:: ScalarField>,
     values: &Vec<u64>,
-) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
+) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
     let degree = values.len();
     let domain_size = domain.size as usize;
     
@@ -171,19 +197,35 @@ fn compute_polynomials<E: Pairing>(
     let last_omega = domain.element(domain_size - 1);
     let x_minus_last_omega = DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![-last_omega, E::ScalarField::one()]);
 
-    // compute w = [P_B(X) - P_B(Xw) * P_A(X)] * (X - w^{n-1})
-    let mut w = &pb_shifted * &pa;
-    w = &pb - &w;
-    w = &w * &x_minus_last_omega;
+    // compute W_1(X) = [P_B(X) - P_B(Xw) * P_A(X)] * (X - w^{n-1})
+    let mut w1 = &pb_shifted * &pa;
+    w1 = &pb - &w1;
+    w1 = &w1 * &x_minus_last_omega;
 
     // the vanishing polynomial of this domain, X^n - 1
     let z = DenseOrSparsePolynomial::from(domain.vanishing_polynomial());
 
-    // w / z, the remainder should be zero polynomial
-    let (q, r) = DenseOrSparsePolynomial::from(w).divide_with_q_and_r(&z).unwrap();
+    // W_1(X) / Z(X), the remainder should be zero polynomial
+    let (q_w1, r) = DenseOrSparsePolynomial::from(w1).divide_with_q_and_r(&z).unwrap();
     assert!(r.is_zero());
 
-    (pa, pb, q)
+    // construct the polynomial, X - w^{degree-1}
+    let omega_degree = domain.element(degree - 1);
+    let x_minus_omega_degree = DensePolynomial::<E::ScalarField>::from_coefficients_vec(vec![-omega_degree, E::ScalarField::one()]);
+
+    // compute Z(X) / (X - w^{degree-1})
+    let (zed, r) = z.divide_with_q_and_r(&DenseOrSparsePolynomial::from(x_minus_omega_degree)).unwrap();
+    assert!(r.is_zero());
+
+    // compute W_2(X) = [P_A(X) - P_B(X)] * Z(X) / (X - w^{degree-1})
+    let mut w2 = &pa - &pb;
+    w2 = &w2 * &zed;
+
+    // W_2(X) / Z(X), the remainder should be zero polynomial
+    let (q_w2, r) = DenseOrSparsePolynomial::from(w2).divide_with_q_and_r(&z).unwrap();
+    assert!(r.is_zero());
+
+    (pa, pb, q_w1, q_w2)
 }
 
 fn compute_accumulator<F: FftField>(evals: &Vec<F>) -> Vec<F> {

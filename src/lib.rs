@@ -54,6 +54,6 @@ mod tests {
             prepared_beta_h: pp.prepared_beta_h.clone(),
         };
         // verify the proof
-        verify(vk, proof, domain, rng);
+        verify(vk, proof, domain, degree, rng);
     }
 }
