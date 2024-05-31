@@ -15,7 +15,7 @@ pub fn prove<E: Pairing, R: RngCore>(
     rng: &mut R,
 ) -> BatchCheckProof<E> {
     // compute polynomials, P_A(X), P_B(X), Q1(X) and Q2(X)
-    // where Q1(X) = [P_B(Xw) - P_A(X) * P_B(X)] * (X - w^{n-1}) / Z(X)
+    // where Q1(X) = [P_B(X) - P_B(Xw) * P_A(X)] * (X - w^{n-1}) / Z(X)
     // Q2(X) = [P_A(X) - P_B(X)] * Z(X) / (X - w^{degree-1})
     let (pa, pb, q1, q2) = compute_polynomials::<E>(domain, values);
 
