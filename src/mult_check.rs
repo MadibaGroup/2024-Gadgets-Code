@@ -8,6 +8,8 @@ use ark_std::{rand::RngCore, One};
 
 use crate::utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox};
 
+/// [unoptimmized]
+/// to prove a claimed value is the product of some other values
 pub fn prove<E: Pairing, R: RngCore>(
     powers: &Powers<E>,
     values: &Vec<u64>,

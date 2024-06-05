@@ -1,6 +1,6 @@
 mod types;
 mod utils;
-mod prod_check;
+mod mult_check;
 
 #[cfg(test)]
 mod tests {
@@ -8,14 +8,14 @@ mod tests {
     use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
     use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
     use ark_std::{rand::{distributions::Uniform, Rng}, test_rng};
-    use prod_check::{verify_evaluations, verify_product};
+    use mult_check::{verify_evaluations, verify_product};
     use types::UniPoly_381;
 
     use super::*;
 
     #[test]
     fn prod_check() {
-        use prod_check::prove;
+        use mult_check::prove;
 
         let rng = &mut test_rng();
 
