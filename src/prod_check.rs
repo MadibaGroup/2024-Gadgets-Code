@@ -55,8 +55,8 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, tau
-    let tau = calculate_hash(
+    // calculate the challenge, xi
+    let xi = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_pa.0 },
                 HashBox::<E>{ object: cm_pb.0 },
@@ -65,24 +65,24 @@ pub fn prove<E: Pairing, R: RngCore>(
             ]
         );
 
-    // open the evaluations at tau for P_A, P_B, Q1 and Q2
+    // open the evaluations at xi for P_A, P_B, Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
         &vec![&pa, &pb, &q1, &q2], 
         &vec![&mask_pa, &mask_pb, &mask_q1, &mask_q2], 
-        tau, 
+        xi, 
         false, 
         rng
     );
 
     let omega = domain.element(1);
 
-    // open the evaluation at tau*omega for P_B
+    // open the evaluation at xi*omega for P_B
     let (h2, open_evals2, gamma2) = batch_open(
         powers, 
         &vec![&pb], 
         &vec![&mask_pb], 
-        tau * omega, 
+        xi * omega, 
         false, 
         rng
     );
@@ -105,7 +105,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             vec![cm_pb],
         ],
         witnesses: vec![h1, h2, h3],
-        points: vec![tau, tau * omega, E::ScalarField::one()],
+        points: vec![xi, xi * omega, E::ScalarField::one()],
         open_evals: vec![
             open_evals1,
             open_evals2,
@@ -139,8 +139,8 @@ pub fn verify_evaluations<E: Pairing, R: RngCore>(
     let cm_q1 = proof.commitments[0][2];
     let cm_q2 = proof.commitments[0][3];
 
-    // verify tau is correct
-    let tau = calculate_hash(
+    // verify xi is correct
+    let xi = calculate_hash(
             &vec![
                 HashBox::<E>{ object: cm_pa.0 },
                 HashBox::<E>{ object: cm_pb.0 },
@@ -148,40 +148,40 @@ pub fn verify_evaluations<E: Pairing, R: RngCore>(
                 HashBox::<E>{ object: cm_q2.0 },
             ]
         );
-    assert_eq!(tau, proof.points[0]);
+    assert_eq!(xi, proof.points[0]);
 
-    // verify tau*omega is correct
+    // verify xi*omega is correct
     let omega = domain.element(1);
-    assert_eq!(tau * omega, proof.points[1]);
+    assert_eq!(xi * omega, proof.points[1]);
 
-    // read the evaluations of P_A(tau), P_B(tau), Q1(tau), P_B(tau*omega)
-    let pa_tau = &proof.open_evals[0][0].into_plain_value().0;
-    let pb_tau = &proof.open_evals[0][1].into_plain_value().0;
-    let q1_tau = &proof.open_evals[0][2].into_plain_value().0;
-    let pb_tau_omega = &proof.open_evals[1][0].into_plain_value().0;
+    // read the evaluations of P_A(xi), P_B(xi), Q1(xi), P_B(xi*omega)
+    let pa_xi = &proof.open_evals[0][0].into_plain_value().0;
+    let pb_xi = &proof.open_evals[0][1].into_plain_value().0;
+    let q1_xi = &proof.open_evals[0][2].into_plain_value().0;
+    let pb_xi_omega = &proof.open_evals[1][0].into_plain_value().0;
 
-    // evaluate Z(X) at tau
+    // evaluate Z(X) at xi
     let z = domain.vanishing_polynomial();
-    let z_tau = z.evaluate(&tau);
+    let z_xi = z.evaluate(&xi);
 
     // compute w^{n-1}
     let domain_size = domain.size as usize;
     let last_omega = domain.element(domain_size - 1);
 
     // verify [P_B(X) - P_B(Xw) * P_A(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
-    let lhs = (*pb_tau - pb_tau_omega.mul(pa_tau)) * (tau - last_omega);
-    let rhs = z_tau * q1_tau;
+    let lhs = (*pb_xi - pb_xi_omega.mul(pa_xi)) * (xi - last_omega);
+    let rhs = z_xi * q1_xi;
     assert_eq!(lhs, rhs);
 
     // compute w^{degree-1}
     let omega_degree = domain.element(degree - 1);
 
-    // read the evaluation of Q2(tau)
-    let q2_tau = &proof.open_evals[0][3].into_plain_value().0;
+    // read the evaluation of Q2(xi)
+    let q2_xi = &proof.open_evals[0][3].into_plain_value().0;
 
     // verify [P_A(X) - P_B(X)] / (X - w^{degree-1}) = Q2(X)
-    let lhs = (*pa_tau - pb_tau) / (tau - omega_degree);
-    let rhs = *q2_tau;
+    let lhs = (*pa_xi - pb_xi) / (xi - omega_degree);
+    let rhs = *q2_xi;
     assert_eq!(lhs, rhs);
 
     batch_check(&vk, &proof, rng);
