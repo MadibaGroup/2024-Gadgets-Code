@@ -12,8 +12,8 @@ use crate::utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, Has
 /// normally used for permutation check
 pub fn prove<E: Pairing, R: RngCore>(
     powers: &Powers<E>,
-    f_evals: &Vec<u64>,
-    g_evals: &Vec<u64>,
+    f_evals: &Vec<E::ScalarField>,
+    g_evals: &Vec<E::ScalarField>,
     domain: Radix2EvaluationDomain<E:: ScalarField>,
     rng: &mut R,
 ) -> BatchCheckProof<E> {
@@ -196,8 +196,8 @@ pub fn verify<E: Pairing, R: RngCore>(
 
 fn compute_polynomials<E: Pairing>(
     domain: Radix2EvaluationDomain<E:: ScalarField>,
-    f_evals: &Vec<u64>,
-    g_evals: &Vec<u64>,
+    f_evals: &Vec<E::ScalarField>,
+    g_evals: &Vec<E::ScalarField>,
 ) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
     // the degrees of the two polynomials should be equal
     assert_eq!(f_evals.len(), g_evals.len());
@@ -205,18 +205,8 @@ fn compute_polynomials<E: Pairing>(
     let degree = f_evals.len();
     let domain_size = domain.size as usize;
 
-    // convert the values into field elements
-    let mut f_evals: Vec<E::ScalarField> = f_evals.iter()
-        .map(| eval | {
-            E::ScalarField::from(*eval)
-        })
-        .collect();
-
-    let mut g_evals: Vec<E::ScalarField> = g_evals.iter()
-        .map(| eval | {
-            E::ScalarField::from(*eval)
-        })
-        .collect();
+    let mut f_evals: Vec<E::ScalarField> = f_evals.clone();
+    let mut g_evals: Vec<E::ScalarField> = g_evals.clone();
 
     // in case that the number of input values is not the power of two, fill the left space with one, this doesn't break the completeness and soundness
     let ones = vec![E::ScalarField::one(); domain_size - degree];
