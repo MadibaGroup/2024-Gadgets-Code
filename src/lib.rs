@@ -157,6 +157,6 @@ mod tests {
             prepared_beta_h: pp.prepared_beta_h.clone(),
         };
 
-        verify(vk, &proof, domain, degree, rng);
+        verify(vk, &proof, domain, rng);
     }
 }

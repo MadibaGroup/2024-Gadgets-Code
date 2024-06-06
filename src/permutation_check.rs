@@ -1,11 +1,9 @@
-use std::ops::Mul;
-
 use ark_ec::pairing::Pairing;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One};
 
-use crate::{prod_check, utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox}};
+use crate::{prod_check, utils::{batch_open, calculate_hash, BatchCheckProof, HashBox}};
 
 /// to prove the evaluations of F(X) are the permutation of the evaluations of G(X)
 pub fn prove<E: Pairing, R: RngCore>(
@@ -92,6 +90,7 @@ pub fn prove<E: Pairing, R: RngCore>(
         rng
     );
 
+    // append the proofs of F(xi) and G(xi)
     BatchCheckProof { 
         commitments: vec![
             prod_check_proof.commitments[0].clone(),
@@ -110,18 +109,8 @@ pub fn verify<E: Pairing, R: RngCore>(
     vk: VerifierKey<E>,
     proof: &BatchCheckProof<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
-    degree: usize,
     rng: &mut R,
 ) {
-    // the evaluation at w^0 of the auxiliary polynomial should be one
-    assert_eq!(E::ScalarField::one(), proof.open_evals[2][0].into_plain_value().0);
-
-    let cm_r_minus_f = proof.commitments[0][0];
-    let cm_r_minus_g = proof.commitments[0][1];
-    let cm_t = proof.commitments[0][2];
-    let cm_q1 = proof.commitments[0][3];
-    let cm_q2 = proof.commitments[0][4];
-
     let cm_f = proof.commitments[3][0];
     let cm_g = proof.commitments[3][1];
 
@@ -133,47 +122,15 @@ pub fn verify<E: Pairing, R: RngCore>(
             ]
         );
 
-    // verify xi is correct
-    let xi = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_r_minus_f.0 },
-            HashBox::<E>{ object: cm_r_minus_g.0 },
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
-    assert_eq!(xi, proof.points[0]);
-
-    // verify xi*omega is correct
-    let omega = domain.element(1);
-    assert_eq!(xi * omega, proof.points[1]);
-
     let r_minus_f_xi = &proof.open_evals[0][0].into_plain_value().0;
     let r_minus_g_xi = &proof.open_evals[0][1].into_plain_value().0;
-    let t_xi = &proof.open_evals[0][2].into_plain_value().0;
-    let q1_xi = &proof.open_evals[0][3].into_plain_value().0;
-    let t_xi_omega = &proof.open_evals[1][0].into_plain_value().0;
-
     let f_xi = &proof.open_evals[3][0].into_plain_value().0;
     let g_xi = &proof.open_evals[3][1].into_plain_value().0;
 
+    // verify r - F(xi) and r - G(xi) are correct
     assert_eq!(r - f_xi, *r_minus_f_xi);
     assert_eq!(r - g_xi, *r_minus_g_xi);
 
-    // evaluate Z(X) at xi
-    let z = domain.vanishing_polynomial();
-    let z_xi = z.evaluate(&xi);
-
-    // compute w^{n-1}
-    let domain_size = domain.size as usize;
-    let last_omega = domain.element(domain_size - 1);
-
-    // verify {T(X) * [r - G(X)] - T(Xw) * [r - F(X)]} * (X - w^{n-1}) = Z(X) * Q1(X)
-    let lhs = (t_xi.mul(r_minus_g_xi) - t_xi_omega.mul(r_minus_f_xi)) * (xi - last_omega);
-    let rhs = z_xi * q1_xi;
-    assert_eq!(lhs, rhs);
-
-    // verify the evaluations are correct
-    batch_check(&vk, proof, rng);
+    // perform the product check
+    prod_check::verify(vk, proof, domain, domain.size(), rng);
 }

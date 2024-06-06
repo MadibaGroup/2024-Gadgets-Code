@@ -176,7 +176,7 @@ pub fn verify<E: Pairing, R: RngCore>(
     let last_omega = domain.element(domain_size - 1);
 
     // verify [T(X) * G(X) - T(Xw) * F(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
-    let lhs = (*t_xi * g_xi - t_xi_omega.mul(f_xi)) * (xi - last_omega);
+    let lhs = (t_xi.mul(g_xi) - t_xi_omega.mul(f_xi)) * (xi - last_omega);
     let rhs = z_xi * q1_xi;
     assert_eq!(lhs, rhs);
 
