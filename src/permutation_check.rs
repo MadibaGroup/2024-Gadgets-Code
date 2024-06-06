@@ -3,9 +3,9 @@ use std::ops::Mul;
 use ark_ec::pairing::Pairing;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
-use ark_std::{iterable::Iterable, rand::RngCore, One};
+use ark_std::{rand::RngCore, One};
 
-use crate::{prod_check, utils::{batch_open, calculate_hash, BatchCheckProof, HashBox}};
+use crate::{prod_check, utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox}};
 
 /// to prove the evaluations of F(X) are the permutation of the evaluations of G(X)
 pub fn prove<E: Pairing, R: RngCore>(
@@ -28,6 +28,7 @@ pub fn prove<E: Pairing, R: RngCore>(
     f_evals.extend(ones.clone());
     g_evals.extend(ones.clone());
 
+    // interpolate F(X) and G(X)
     let f = Evaluations::from_vec_and_domain(f_evals.clone(), domain).interpolate();
     let g = Evaluations::from_vec_and_domain(g_evals.clone(), domain).interpolate();
 
@@ -49,7 +50,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, r
+    // calculate the challenge, r, by hashing the commitments to F and G
     let r = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_f.0 },
@@ -57,9 +58,11 @@ pub fn prove<E: Pairing, R: RngCore>(
             ]
         );
 
+    // compute the evaluations that r - F(X) and r - G(X)
     let r_minus_f: Vec<_> = f_evals.iter().map(| eval | { r - eval }).collect();
     let r_minus_g: Vec<_> = g_evals.iter().map(| eval | { r - eval }).collect();
 
+    // prove the product of r - F(X) is equal to r - G(X)
     let prod_check_proof = prod_check::prove(powers, &r_minus_f, &r_minus_g, domain, rng);
 
     let cm_r_minus_f = prod_check_proof.commitments[0][0];
@@ -79,6 +82,7 @@ pub fn prove<E: Pairing, R: RngCore>(
         ]
     );
 
+    // open F(xi) and G(xi)
     let (h, open_evals, gamma) = batch_open(
         powers, 
         &vec![&f, &g], 
@@ -109,6 +113,7 @@ pub fn verify<E: Pairing, R: RngCore>(
     degree: usize,
     rng: &mut R,
 ) {
+    // the evaluation at w^0 of the auxiliary polynomial should be one
     assert_eq!(E::ScalarField::one(), proof.open_evals[2][0].into_plain_value().0);
 
     let cm_r_minus_f = proof.commitments[0][0];
@@ -120,6 +125,7 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_f = proof.commitments[3][0];
     let cm_g = proof.commitments[3][1];
 
+    // compute the challenge, r
     let r = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_f.0 },
@@ -167,4 +173,7 @@ pub fn verify<E: Pairing, R: RngCore>(
     let lhs = (t_xi.mul(r_minus_g_xi) - t_xi_omega.mul(r_minus_f_xi)) * (xi - last_omega);
     let rhs = z_xi * q1_xi;
     assert_eq!(lhs, rhs);
+
+    // verify the evaluations are correct
+    batch_check(&vk, proof, rng);
 }
