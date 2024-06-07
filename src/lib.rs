@@ -3,6 +3,7 @@ mod utils;
 mod mult_check;
 mod prod_check;
 mod permutation_check;
+mod prescribed_perm_check;
 
 #[cfg(test)]
 mod tests {

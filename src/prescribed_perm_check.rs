@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use ark_ec::pairing::Pairing;
 use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
@@ -5,30 +7,38 @@ use ark_std::{rand::RngCore, One};
 
 use crate::{prod_check, utils::{batch_open, calculate_hash, BatchCheckProof, HashBox}};
 
-/// to prove the evaluations of F(X) are the permutation of the evaluations of G(X)
+/// to prove F(X) = G(sigma(X)) on the domain
 pub fn prove<E: Pairing, R: RngCore>(
     powers: &Powers<E>,
     f_evals: &Vec<E::ScalarField>,
     g_evals: &Vec<E::ScalarField>,
+    s_evals: &Vec<E::ScalarField>,
     domain: Radix2EvaluationDomain<E:: ScalarField>,
     rng: &mut R,
 ) -> BatchCheckProof<E> {
     assert_eq!(f_evals.len(), g_evals.len());
+    assert_eq!(f_evals.len(), s_evals.len());
 
     let degree = f_evals.len();
     let domain_size = domain.size as usize;
 
     let mut f_evals: Vec<E::ScalarField> = f_evals.clone();
     let mut g_evals: Vec<E::ScalarField> = g_evals.clone();
+    let mut s_evals: Vec<E::ScalarField> = s_evals.clone();
 
     // in case that the number of input values is not the power of two, fill the left space with one, this doesn't break the completeness and soundness
-    let ones = vec![E::ScalarField::one(); domain_size - degree];
-    f_evals.extend(ones.clone());
-    g_evals.extend(ones.clone());
+    // let ones = vec![E::ScalarField::one(); domain_size - degree];
+    // f_evals.extend(ones.clone());
+    // g_evals.extend(ones.clone());
+    // for i in 0..domain_size - degree {
+    //     let omega = domain.element(i + degree);
+    //     s_evals.push(omega);
+    // }
 
-    // interpolate F(X) and G(X)
+    // interpolate F(X), G(X), S(X)
     let f = Evaluations::from_vec_and_domain(f_evals.clone(), domain).interpolate();
     let g = Evaluations::from_vec_and_domain(g_evals.clone(), domain).interpolate();
+    let s = Evaluations::from_vec_and_domain(s_evals.clone(), domain).interpolate();
 
     // commit to F(X)
     let (cm_f, mask_f) = 
@@ -48,23 +58,53 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, r, by hashing the commitments to F and G
-    let r = calculate_hash(
+    // commit to S(X)
+    let (cm_s, mask_s) = 
+        KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
+            &powers, 
+            &s,
+            Some(s.degree()), 
+            Some(rng)
+        ).unwrap();
+
+    // calculate the challenges a and b
+    let a = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_f.0 },
+                HashBox::<E>{ object: cm_s.0 },
+            ]
+        );
+    let b = calculate_hash(
+        &vec![
                 HashBox::<E>{ object: cm_g.0 },
+                HashBox::<E>{ object: cm_s.0 },
             ]
         );
 
-    // compute the evaluations such that r - F(X) and r - G(X)
-    let r_minus_f: Vec<_> = f_evals.iter().map(| eval | { r - eval }).collect();
-    let r_minus_g: Vec<_> = g_evals.iter().map(| eval | { r - eval }).collect();
+    // compute the evaluations such that the product of [a - b * S(X) - F(X)] and [a - b * X - G(X)]
+    let numerator: Vec<_> = f_evals.iter().zip(s_evals)
+        .map(| (f_eval, s_eval) | {
+            println!("s: {}", s_eval);
+            a - b.mul(s_eval) - f_eval
+        })
+        .collect();
+    let denominator: Vec<_> = g_evals.iter().enumerate()
+        .map(| (i, g_eval) | {
+            let omega = domain.element(i);
+            println!("omega{}: {}", i, omega);
+            a - b.mul(omega) - g_eval
+        })
+        .collect();
+
+    let prod1: E::ScalarField = numerator.iter().product();
+    let prod2: E::ScalarField = denominator.iter().product();
+    println!("check: {}", prod1 == prod2);
 
     // prove the product of r - F(X) is equal to r - G(X)
-    let prod_check_proof = prod_check::prove(powers, &r_minus_f, &r_minus_g, domain, rng);
+    let prod_check_proof = prod_check::prove(powers, &numerator, &denominator, domain, rng);
 
-    let cm_r_minus_f = prod_check_proof.commitments[0][0];
-    let cm_r_minus_g = prod_check_proof.commitments[0][1];
+    let cm_numerator = prod_check_proof.commitments[0][0];
+    let cm_denominator = prod_check_proof.commitments[0][1];
     let cm_t = prod_check_proof.commitments[0][2];
     let cm_q1 = prod_check_proof.commitments[0][3];
     let cm_q2 = prod_check_proof.commitments[0][4];
@@ -72,8 +112,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     // compute xi
     let xi = calculate_hash(
         &vec![
-            HashBox::<E>{ object: cm_r_minus_f.0 },
-            HashBox::<E>{ object: cm_r_minus_g.0 },
+            HashBox::<E>{ object: cm_numerator.0 },
+            HashBox::<E>{ object: cm_denominator.0 },
             HashBox::<E>{ object: cm_t.0 },
             HashBox::<E>{ object: cm_q1.0 },
             HashBox::<E>{ object: cm_q2.0 },
@@ -83,8 +123,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     // open F(xi) and G(xi)
     let (h, open_evals, gamma) = batch_open(
         powers, 
-        &vec![&f, &g], 
-        &vec![&mask_f, &mask_g], 
+        &vec![&f, &g, &s], 
+        &vec![&mask_f, &mask_g, &mask_s], 
         xi, 
         false, 
         rng
@@ -96,7 +136,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             prod_check_proof.commitments[0].clone(),
             prod_check_proof.commitments[1].clone(),
             prod_check_proof.commitments[2].clone(),
-            vec![cm_f, cm_g],
+            vec![cm_f, cm_g, cm_s],
         ], 
         witnesses: prod_check_proof.witnesses.into_iter().chain(vec![h].into_iter()).collect(), 
         points: prod_check_proof.points.into_iter().chain(vec![xi].into_iter()).collect(), 
@@ -113,23 +153,48 @@ pub fn verify<E: Pairing, R: RngCore>(
 ) {
     let cm_f = proof.commitments[3][0];
     let cm_g = proof.commitments[3][1];
+    let cm_s = proof.commitments[3][2];
 
-    // compute the challenge, r
-    let r = calculate_hash(
+    // calculate the challenges a and b
+    let a = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_f.0 },
+                HashBox::<E>{ object: cm_s.0 },
+            ]
+        );
+    let b = calculate_hash(
+        &vec![
                 HashBox::<E>{ object: cm_g.0 },
+                HashBox::<E>{ object: cm_s.0 },
             ]
         );
 
-    let r_minus_f_xi = &proof.open_evals[0][0].into_plain_value().0;
-    let r_minus_g_xi = &proof.open_evals[0][1].into_plain_value().0;
+    let a_minus_bs_f_xi = &proof.open_evals[0][0].into_plain_value().0;
+    let a_minus_b_g_xi = &proof.open_evals[0][1].into_plain_value().0;
     let f_xi = &proof.open_evals[3][0].into_plain_value().0;
     let g_xi = &proof.open_evals[3][1].into_plain_value().0;
+    let s_xi = &proof.open_evals[3][2].into_plain_value().0;
 
-    // verify r - F(xi) and r - G(xi) are correct
-    assert_eq!(r - f_xi, *r_minus_f_xi);
-    assert_eq!(r - g_xi, *r_minus_g_xi);
+    let cm_numerator = proof.commitments[0][0];
+    let cm_denominator = proof.commitments[0][1];
+    let cm_t = proof.commitments[0][2];
+    let cm_q1 = proof.commitments[0][3];
+    let cm_q2 = proof.commitments[0][4];
+
+    // compute xi
+    let xi = calculate_hash(
+        &vec![
+            HashBox::<E>{ object: cm_numerator.0 },
+            HashBox::<E>{ object: cm_denominator.0 },
+            HashBox::<E>{ object: cm_t.0 },
+            HashBox::<E>{ object: cm_q1.0 },
+            HashBox::<E>{ object: cm_q2.0 },
+        ]
+    );
+
+    // verify a - b * S(xi) - F(xi) and a - b * xi - G(xi) are correct
+    assert_eq!(a - b.mul(s_xi) - f_xi, *a_minus_bs_f_xi);
+    assert_eq!(a - b.mul(xi) - g_xi, *a_minus_b_g_xi);
 
     // perform the product check
     prod_check::verify(vk, proof, domain, domain.size(), rng);
