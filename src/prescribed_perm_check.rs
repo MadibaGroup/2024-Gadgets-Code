@@ -27,13 +27,13 @@ pub fn prove<E: Pairing, R: RngCore>(
     let mut s_evals: Vec<E::ScalarField> = s_evals.clone();
 
     // in case that the number of input values is not the power of two, fill the left space with one, this doesn't break the completeness and soundness
-    // let ones = vec![E::ScalarField::one(); domain_size - degree];
-    // f_evals.extend(ones.clone());
-    // g_evals.extend(ones.clone());
-    // for i in 0..domain_size - degree {
-    //     let omega = domain.element(i + degree);
-    //     s_evals.push(omega);
-    // }
+    let ones = vec![E::ScalarField::one(); domain_size - degree];
+    f_evals.extend(ones.clone());
+    g_evals.extend(ones.clone());
+    for i in 0..domain_size - degree {
+        let omega = domain.element(i + degree);
+        s_evals.push(omega);
+    }
 
     // interpolate F(X), G(X), S(X)
     let f = Evaluations::from_vec_and_domain(f_evals.clone(), domain).interpolate();
@@ -84,21 +84,15 @@ pub fn prove<E: Pairing, R: RngCore>(
     // compute the evaluations such that the product of [a - b * S(X) - F(X)] and [a - b * X - G(X)]
     let numerator: Vec<_> = f_evals.iter().zip(s_evals)
         .map(| (f_eval, s_eval) | {
-            println!("s: {}", s_eval);
             a - b.mul(s_eval) - f_eval
         })
         .collect();
     let denominator: Vec<_> = g_evals.iter().enumerate()
         .map(| (i, g_eval) | {
             let omega = domain.element(i);
-            println!("omega{}: {}", i, omega);
             a - b.mul(omega) - g_eval
         })
         .collect();
-
-    let prod1: E::ScalarField = numerator.iter().product();
-    let prod2: E::ScalarField = denominator.iter().product();
-    println!("check: {}", prod1 == prod2);
 
     // prove the product of r - F(X) is equal to r - G(X)
     let prod_check_proof = prod_check::prove(powers, &numerator, &denominator, domain, rng);
