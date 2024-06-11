@@ -191,5 +191,5 @@ pub fn verify<E: Pairing, R: RngCore>(
     assert_eq!(a - b.mul(xi) - g_xi, *a_minus_b_g_xi);
 
     // perform the product check
-    prod_check::verify(vk, proof, domain, domain.size(), rng);
+    prod_check::verify(&vk, proof, domain, domain.size(), rng);
 }

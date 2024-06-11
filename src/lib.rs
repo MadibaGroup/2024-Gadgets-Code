@@ -4,6 +4,7 @@ mod mult_check;
 mod prod_check;
 mod permutation_check;
 mod prescribed_perm_check;
+mod lookup_args;
 
 #[cfg(test)]
 mod tests {
@@ -109,7 +110,7 @@ mod tests {
             prepared_beta_h: pp.prepared_beta_h.clone(),
         };
 
-        verify(vk, &proof, domain, degree, rng);
+        verify(&vk, &proof, domain, degree, rng);
     }
 
     #[test]
@@ -158,7 +159,7 @@ mod tests {
             prepared_beta_h: pp.prepared_beta_h.clone(),
         };
 
-        verify(vk, &proof, domain, rng);
+        verify(&vk, &proof, domain, rng);
     }
 
     #[test]
@@ -216,5 +217,44 @@ mod tests {
         };
 
         verify(vk, &proof, domain, rng);
+    }
+
+    #[test]
+    fn lookup_args() {
+        use lookup_args::{prove, verify};
+
+        let rng = &mut test_rng();
+
+        let a_evals = vec![2, 3, 5, 4, 2, 2, 5, 7];
+        let s_evals = vec![1, 2, 3, 4, 5, 6, 7, 8];
+
+        // KZG trusted setup
+        let degree = a_evals.len();
+        let next_power_of_two = degree.checked_next_power_of_two().expect("length is too long");
+        let max_degree = next_power_of_two * 2;
+        let pp = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, true, rng)
+            .expect("KZG setup failed");
+        let powers_of_g = pp.powers_of_g[..=max_degree].to_vec();
+        let powers_of_gamma_g = (0..=max_degree).map(|i| pp.powers_of_gamma_g[&i]).collect();
+        let powers: Powers<Bls12_381> = Powers {
+            powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g),
+            powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
+        };
+
+        // use the next power of two of the degree as the domain size
+        let domain = Radix2EvaluationDomain::new(next_power_of_two).expect("unsupported domain size");
+
+        let proofs = prove(&powers, &a_evals, &s_evals, domain, rng);
+
+        let vk = VerifierKey {
+            g: pp.powers_of_g[0],
+            gamma_g: pp.powers_of_gamma_g[&0],
+            h: pp.h,
+            beta_h: pp.beta_h,
+            prepared_h: pp.prepared_h.clone(),
+            prepared_beta_h: pp.prepared_beta_h.clone(),
+        };
+
+        verify(&vk, &proofs, domain, rng);
     }
 }

@@ -106,7 +106,7 @@ pub fn prove<E: Pairing, R: RngCore>(
 }
 
 pub fn verify<E: Pairing, R: RngCore>(
-    vk: VerifierKey<E>,
+    vk: &VerifierKey<E>,
     proof: &BatchCheckProof<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
     rng: &mut R,

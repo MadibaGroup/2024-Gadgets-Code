@@ -130,7 +130,7 @@ pub fn prove<E: Pairing, R: RngCore>(
 
 /// verify the evaluations are correct and polynomials are vanishing
 pub fn verify<E: Pairing, R: RngCore>(
-    vk: VerifierKey<E>,
+    vk: &VerifierKey<E>,
     proof: &BatchCheckProof<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
     degree: usize,
