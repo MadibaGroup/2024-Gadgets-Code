@@ -5,6 +5,7 @@ mod prod_check;
 mod permutation_check;
 mod prescribed_perm_check;
 mod lookup_args;
+mod range;
 
 #[cfg(test)]
 mod tests {
@@ -256,5 +257,45 @@ mod tests {
         };
 
         verify(&vk, &proofs, domain, rng);
+    }
+
+    #[test]
+    fn range() {
+        use range::{prove, verify};
+
+        let rng = &mut test_rng();
+
+        let n = 127u32;
+
+        // KZG trusted setup
+        let next_power_of_two = n.checked_next_power_of_two().expect("length is too long");
+        let max_degree = (next_power_of_two * 2) as usize;
+        let pp = KZG10::<Bls12_381, UniPoly_381>::setup(max_degree, true, rng)
+            .expect("KZG setup failed");
+        let powers_of_g = pp.powers_of_g[..=max_degree].to_vec();
+        let powers_of_gamma_g = (0..=max_degree).map(|i| pp.powers_of_gamma_g[&i]).collect();
+        let powers: Powers<Bls12_381> = Powers {
+            powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g),
+            powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
+        };
+
+        // use the next power of two of the degree as the domain size
+        let domain = Radix2EvaluationDomain::new(next_power_of_two.try_into().unwrap()).expect("unsupported domain size");
+
+        let proof = prove(&powers, n, domain, rng);
+
+        let vk = VerifierKey {
+            g: pp.powers_of_g[0],
+            gamma_g: pp.powers_of_gamma_g[&0],
+            h: pp.h,
+            beta_h: pp.beta_h,
+            prepared_h: pp.prepared_h.clone(),
+            prepared_beta_h: pp.prepared_beta_h.clone(),
+        };
+
+        let committed_n = proof.open_evals[2][0].into_plain_value().0;
+        assert_eq!(committed_n, BlsScalarField::from(committed_n));
+
+        verify(vk, &proof, domain, rng);
     }
 }
