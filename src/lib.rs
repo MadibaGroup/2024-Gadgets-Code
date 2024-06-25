@@ -4,7 +4,7 @@ mod mult_check;
 mod prod_check;
 mod permutation_check;
 mod prescribed_perm_check;
-mod lookup_args;
+mod halo2_lookup;
 mod range;
 
 #[cfg(test)]
@@ -221,8 +221,8 @@ mod tests {
     }
 
     #[test]
-    fn lookup_args() {
-        use lookup_args::{prove, verify};
+    fn halo2_lookup() {
+        use halo2_lookup::{prove, verify};
 
         let rng = &mut test_rng();
 
