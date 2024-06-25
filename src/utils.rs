@@ -1,7 +1,7 @@
 use std::ops::Mul;
 
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
-use ark_ff::{Field, PrimeField, Zero};
+use ark_ff::{FftField, Field, PrimeField, Zero};
 use ark_poly::{univariate::DensePolynomial, Polynomial, DenseUVPolynomial};
 use ark_poly_commit::kzg10::{Commitment, Powers, Randomness, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, UniformRand};
@@ -180,4 +180,21 @@ pub fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
         .map(|s| s.into_bigint())
         .collect::<Vec<_>>();
     coeffs
+}
+
+pub fn construct_accumulator_for_prod_check<F: FftField>(
+    numerator: &Vec<F>,
+    denominator: &Vec<F>,
+) -> Vec<F> {
+    // the degrees of f and g should be equal
+    assert_eq!(numerator.len(), denominator.len());
+
+    let mut aux = Vec::<F>::new();
+    aux.push(F::one());
+    let len: usize = numerator.len();
+    for i in 0..len {
+        aux.push(aux[i] * numerator[i] / denominator[i])
+    }
+    assert_eq!(*aux.last().unwrap(), F::one());
+    aux
 }
