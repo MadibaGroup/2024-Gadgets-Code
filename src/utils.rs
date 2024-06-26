@@ -2,7 +2,7 @@ use std::ops::Mul;
 
 use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM};
 use ark_ff::{FftField, Field, PrimeField, Zero};
-use ark_poly::{univariate::DensePolynomial, Polynomial, DenseUVPolynomial};
+use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Evaluations, Polynomial, Radix2EvaluationDomain};
 use ark_poly_commit::kzg10::{Commitment, Powers, Randomness, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, UniformRand};
 
@@ -32,21 +32,32 @@ pub struct Transcript {
 }
 
 impl Transcript {
+    pub fn new() -> Self {
+        Self { messages: vec![] }
+    }
+
     pub fn append_affine<E: Pairing>(&mut self, object: E::G1Affine) {
         self.messages.push(format!("{:?}", object));
+    }
+
+    pub fn append_affines<E: Pairing>(&mut self, objects: &Vec<E::G1Affine>) {
+        for obj in objects {
+            self.messages.push(format!("{:?}", obj));
+        }
     }
 
     pub fn append_message(&mut self, msg: String) {
         self.messages.push(msg);
     }
 
-    pub fn digest<E: Pairing>(&self) -> E::ScalarField {
+    pub fn append_and_digest<E: Pairing>(&self, msg: String) -> E::ScalarField {
         let mut hasher = Sha256::default();
-        let mut msg: String = "".to_owned();
+        let mut messages: String = "".to_owned();
         for obj in &self.messages {
-            msg.push_str(&format!("{:?}", obj));
+            messages.push_str(&format!("{:?}", obj));
         }
-        hasher.update(msg);
+        messages.push_str(&msg);
+        hasher.update(messages);
         let digest = hasher.finalize();
         let num = BigUint::from_bytes_le(&digest);
         E::ScalarField::from(num)
@@ -223,4 +234,14 @@ pub fn construct_accumulator_for_prod_check<F: FftField>(
     }
     assert_eq!(*aux.last().unwrap(), F::one());
     aux
+}
+
+/// compute the F(Xw) from F(X)
+pub fn shift_polynomial_left<F: FftField>(
+    f: DensePolynomial<F>,
+    domain: Radix2EvaluationDomain<F>,
+) -> DensePolynomial<F> {
+    let mut evals = f.evaluate_over_domain(domain).evals.clone();
+    evals.rotate_left(1);
+    Evaluations::from_vec_and_domain(evals, domain).interpolate()
 }

@@ -301,12 +301,12 @@ mod tests {
 
     #[test]
     fn plookup() {
-        use plookup::{prove};
+        use plookup::{prove, verify};
 
         let rng = &mut test_rng();
 
-        let a_evals = vec![2, 3, 5, 4, 2, 2, 5, 7];
-        let t_evals = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let a_evals = vec![2, 3, 5, 4, 2, 2, 5];
+        let t_evals = vec![1, 2, 3, 4, 5, 6, 7, 8];
 
         // KZG trusted setup
         let degree = a_evals.len();
@@ -325,6 +325,17 @@ mod tests {
         let domain = Radix2EvaluationDomain::new(next_power_of_two).expect("unsupported domain size");
 
         let proof = prove(&powers, &a_evals, &t_evals, domain, rng);
+
+        let vk = VerifierKey {
+            g: pp.powers_of_g[0],
+            gamma_g: pp.powers_of_gamma_g[&0],
+            h: pp.h,
+            beta_h: pp.beta_h,
+            prepared_h: pp.prepared_h.clone(),
+            prepared_beta_h: pp.prepared_beta_h.clone(),
+        };
+
+        verify(&vk, &proof, domain, rng);
     }
 
     #[test]
