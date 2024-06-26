@@ -1,11 +1,12 @@
-mod types;
-mod utils;
-mod mult_check;
-mod prod_check;
-mod permutation_check;
-mod prescribed_perm_check;
-mod halo2_lookup;
-mod range;
+pub mod types;
+pub mod utils;
+pub mod mult_check;
+pub mod prod_check;
+pub mod permutation_check;
+pub mod prescribed_perm_check;
+pub mod halo2_lookup;
+pub mod plookup;
+pub mod range;
 
 #[cfg(test)]
 mod tests {
