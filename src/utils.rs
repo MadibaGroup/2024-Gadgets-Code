@@ -27,6 +27,32 @@ pub fn calculate_hash<E: Pairing>(objects: &Vec<HashBox<E>>) -> E::ScalarField {
     E::ScalarField::from(num)
 }
 
+pub struct Transcript {
+    messages: Vec<String>,
+}
+
+impl Transcript {
+    pub fn append_affine<E: Pairing>(&mut self, object: E::G1Affine) {
+        self.messages.push(format!("{:?}", object));
+    }
+
+    pub fn append_message(&mut self, msg: String) {
+        self.messages.push(msg);
+    }
+
+    pub fn digest<E: Pairing>(&self) -> E::ScalarField {
+        let mut hasher = Sha256::default();
+        let mut msg: String = "".to_owned();
+        for obj in &self.messages {
+            msg.push_str(&format!("{:?}", obj));
+        }
+        hasher.update(msg);
+        let digest = hasher.finalize();
+        let num = BigUint::from_bytes_le(&digest);
+        E::ScalarField::from(num)
+    }
+}
+
 pub enum OpenEval<E: Pairing> {
     Plain(E::ScalarField, E::ScalarField),
     Committed(E::G1Affine),
