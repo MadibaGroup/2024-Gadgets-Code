@@ -22,7 +22,7 @@ pub fn prove<E: Pairing, R: RngCore>(
         .collect();
 
     let t = Evaluations::from_vec_and_domain(digits, domain).interpolate();
-    let (t_shifted, q1, q2) = compute_polynomials::<E>(&t, domain);
+    let (q1, q2) = compute_polynomials::<E>(&t, domain);
 
     // commit to T(X)
     let (cm_t, mask_t) = 
@@ -166,7 +166,7 @@ fn decompose_to_digits(n: u32) -> Vec<u32> {
 fn compute_polynomials<E: Pairing>(
     t: &DensePolynomial<E::ScalarField>,
     domain: Radix2EvaluationDomain<E:: ScalarField>
-) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
+) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
     // get the evaluations of T(X) over domain
     let t_evals = t.clone().evaluate_over_domain(domain);
 
@@ -206,5 +206,5 @@ fn compute_polynomials<E: Pairing>(
     let (q2, r) = DenseOrSparsePolynomial::from(w2).divide_with_q_and_r(&DenseOrSparsePolynomial::from(numerator)).unwrap();
     assert!(r.is_zero());
 
-    (t_shifted, q1, q2)
+    (q1, q2)
 }
