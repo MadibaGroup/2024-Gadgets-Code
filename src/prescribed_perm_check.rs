@@ -103,8 +103,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     let cm_q1 = prod_check_proof.commitments[0][3];
     let cm_q2 = prod_check_proof.commitments[0][4];
 
-    // compute xi
-    let xi = calculate_hash(
+    // compute zeta
+    let zeta = calculate_hash(
         &vec![
             HashBox::<E>{ object: cm_numerator.0 },
             HashBox::<E>{ object: cm_denominator.0 },
@@ -114,17 +114,17 @@ pub fn prove<E: Pairing, R: RngCore>(
         ]
     );
 
-    // open F(xi) and G(xi)
+    // open F(zeta) and G(zeta)
     let (h, open_evals, gamma) = batch_open(
         powers, 
         &vec![&f, &g, &s], 
         &vec![&mask_f, &mask_g, &mask_s], 
-        xi, 
+        zeta, 
         false, 
         rng
     );
 
-    // append the proofs of F(xi) and G(xi)
+    // append the proofs of F(zeta) and G(zeta)
     BatchCheckProof { 
         commitments: vec![
             prod_check_proof.commitments[0].clone(),
@@ -133,7 +133,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             vec![cm_f, cm_g, cm_s],
         ], 
         witnesses: prod_check_proof.witnesses.into_iter().chain(vec![h].into_iter()).collect(), 
-        points: prod_check_proof.points.into_iter().chain(vec![xi].into_iter()).collect(), 
+        points: prod_check_proof.points.into_iter().chain(vec![zeta].into_iter()).collect(), 
         open_evals: prod_check_proof.open_evals.into_iter().chain(vec![open_evals].into_iter()).collect(), 
         gammas: prod_check_proof.gammas.into_iter().chain(vec![gamma].into_iter()).collect() 
     }
@@ -163,11 +163,11 @@ pub fn verify<E: Pairing, R: RngCore>(
             ]
         );
 
-    let a_minus_bs_f_xi = &proof.open_evals[0][0].into_plain_value().0;
-    let a_minus_b_g_xi = &proof.open_evals[0][1].into_plain_value().0;
-    let f_xi = &proof.open_evals[3][0].into_plain_value().0;
-    let g_xi = &proof.open_evals[3][1].into_plain_value().0;
-    let s_xi = &proof.open_evals[3][2].into_plain_value().0;
+    let a_minus_bs_f_zeta = &proof.open_evals[0][0].into_plain_value().0;
+    let a_minus_b_g_zeta = &proof.open_evals[0][1].into_plain_value().0;
+    let f_zeta = &proof.open_evals[3][0].into_plain_value().0;
+    let g_zeta = &proof.open_evals[3][1].into_plain_value().0;
+    let s_zeta = &proof.open_evals[3][2].into_plain_value().0;
 
     let cm_numerator = proof.commitments[0][0];
     let cm_denominator = proof.commitments[0][1];
@@ -175,8 +175,8 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q1 = proof.commitments[0][3];
     let cm_q2 = proof.commitments[0][4];
 
-    // compute xi
-    let xi = calculate_hash(
+    // compute zeta
+    let zeta = calculate_hash(
         &vec![
             HashBox::<E>{ object: cm_numerator.0 },
             HashBox::<E>{ object: cm_denominator.0 },
@@ -186,9 +186,9 @@ pub fn verify<E: Pairing, R: RngCore>(
         ]
     );
 
-    // verify a - b * S(xi) - F(xi) and a - b * xi - G(xi) are correct
-    assert_eq!(a - b.mul(s_xi) - f_xi, *a_minus_bs_f_xi);
-    assert_eq!(a - b.mul(xi) - g_xi, *a_minus_b_g_xi);
+    // verify a - b * S(zeta) - F(zeta) and a - b * zeta - G(zeta) are correct
+    assert_eq!(a - b.mul(s_zeta) - f_zeta, *a_minus_bs_f_zeta);
+    assert_eq!(a - b.mul(zeta) - g_zeta, *a_minus_b_g_zeta);
 
     // perform the product check
     prod_check::verify(&vk, proof, domain, domain.size(), rng);

@@ -67,8 +67,8 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, xi
-    let xi = calculate_hash(
+    // calculate the challenge, zeta
+    let zeta = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_f.0 },
                 HashBox::<E>{ object: cm_g.0 },
@@ -78,24 +78,24 @@ pub fn prove<E: Pairing, R: RngCore>(
             ]
         );
 
-    // open the evaluations at xi for F, G, T, Q1 and Q2
+    // open the evaluations at zeta for F, G, T, Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
         &vec![&f, &g, &t, &q1, &q2], 
         &vec![&mask_f, &mask_g, &mask_t, &mask_q1, &mask_q2], 
-        xi, 
+        zeta, 
         false, 
         rng
     );
 
     let omega = domain.element(1);
 
-    // open the evaluation at xi*omega for T
+    // open the evaluation at zeta*omega for T
     let (h2, open_evals2, gamma2) = batch_open(
         powers, 
         &vec![&t], 
         &vec![&mask_t], 
-        xi * omega, 
+        zeta * omega, 
         false, 
         rng
     );
@@ -118,7 +118,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             vec![cm_t],
         ],
         witnesses: vec![h1, h2, h3],
-        points: vec![xi, xi * omega, E::ScalarField::one()],
+        points: vec![zeta, zeta * omega, E::ScalarField::one()],
         open_evals: vec![
             open_evals1,
             open_evals2,
@@ -144,8 +144,8 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q1 = proof.commitments[0][3];
     let cm_q2 = proof.commitments[0][4];
 
-    // verify xi is correct
-    let xi = calculate_hash(
+    // verify zeta is correct
+    let zeta = calculate_hash(
             &vec![
                 HashBox::<E>{ object: cm_f.0 },
                 HashBox::<E>{ object: cm_g.0 },
@@ -154,41 +154,41 @@ pub fn verify<E: Pairing, R: RngCore>(
                 HashBox::<E>{ object: cm_q2.0 },
             ]
         );
-    assert_eq!(xi, proof.points[0]);
+    assert_eq!(zeta, proof.points[0]);
 
-    // verify xi*omega is correct
+    // verify zeta*omega is correct
     let omega = domain.element(1);
-    assert_eq!(xi * omega, proof.points[1]);
+    assert_eq!(zeta * omega, proof.points[1]);
 
-    // read the evaluations of F(xi), G(xi), T(xi), Q1(xi), T(xi*omega)
-    let f_xi = &proof.open_evals[0][0].into_plain_value().0;
-    let g_xi = &proof.open_evals[0][1].into_plain_value().0;
-    let t_xi = &proof.open_evals[0][2].into_plain_value().0;
-    let q1_xi = &proof.open_evals[0][3].into_plain_value().0;
-    let t_xi_omega = &proof.open_evals[1][0].into_plain_value().0;
+    // read the evaluations of F(zeta), G(zeta), T(zeta), Q1(zeta), T(zeta*omega)
+    let f_zeta = &proof.open_evals[0][0].into_plain_value().0;
+    let g_zeta = &proof.open_evals[0][1].into_plain_value().0;
+    let t_zeta = &proof.open_evals[0][2].into_plain_value().0;
+    let q1_zeta = &proof.open_evals[0][3].into_plain_value().0;
+    let t_zeta_omega = &proof.open_evals[1][0].into_plain_value().0;
 
-    // evaluate Z(X) at xi
+    // evaluate Z(X) at zeta
     let z = domain.vanishing_polynomial();
-    let z_xi = z.evaluate(&xi);
+    let z_zeta = z.evaluate(&zeta);
 
     // compute w^{n-1}
     let domain_size = domain.size as usize;
     let last_omega = domain.element(domain_size - 1);
 
     // verify [T(X) * G(X) - T(Xw) * F(X)] * (X - w^{n-1}) = Z(X) * Q1(X)
-    let lhs = (t_xi.mul(g_xi) - t_xi_omega.mul(f_xi)) * (xi - last_omega);
-    let rhs = z_xi * q1_xi;
+    let lhs = (t_zeta.mul(g_zeta) - t_zeta_omega.mul(f_zeta)) * (zeta - last_omega);
+    let rhs = z_zeta * q1_zeta;
     assert_eq!(lhs, rhs);
 
     // compute w^{degree-1}
     let omega_degree = domain.element(degree - 1);
 
-    // read the evaluation of Q2(xi)
-    let q2_xi = &proof.open_evals[0][4].into_plain_value().0;
+    // read the evaluation of Q2(zeta)
+    let q2_zeta = &proof.open_evals[0][4].into_plain_value().0;
 
     // verify T(X) * G(X) - F(X) = Q2(X) * (X - w^{degree-1})
-    let lhs = t_xi.mul(g_xi) - f_xi;
-    let rhs = q2_xi.mul(xi - omega_degree);
+    let lhs = t_zeta.mul(g_zeta) - f_zeta;
+    let rhs = q2_zeta.mul(zeta - omega_degree);
     assert_eq!(lhs, rhs);
 
     batch_check(&vk, &proof, rng);
@@ -213,7 +213,7 @@ fn compute_polynomials<E: Pairing>(
     f_evals.extend(ones.clone());
     g_evals.extend(ones.clone());
 
-    // compute the auxiliary polynomial such that T(X) = \prod{F(X)/G(X)}
+    // compute the auzetaliary polynomial such that T(X) = \prod{F(X)/G(X)}
     let t_evals = compute_aux_poly(&f_evals, &g_evals);
 
     // rotate left the accumulator so that T(Xw) can be interpolated from the shifted evaluations

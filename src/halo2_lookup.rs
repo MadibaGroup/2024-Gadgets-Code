@@ -101,8 +101,8 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, xi
-    let xi = calculate_hash(
+    // calculate the challenge, zeta
+    let zeta = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_a_prime.0 },
                 HashBox::<E>{ object: cm_s_prime.0 },
@@ -111,24 +111,24 @@ pub fn prove<E: Pairing, R: RngCore>(
             ]
         );
 
-    // open the evaluations at xi for A', S', Q1 and Q2
+    // open the evaluations at zeta for A', S', Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
         &vec![&a_prime, &s_prime, &q1, &q2], 
         &vec![&mask_a_prime, &mask_s_prime, &mask_q1, &mask_q2], 
-        xi, 
+        zeta, 
         false, 
         rng
     );
 
     let omega = domain.element(1);
 
-    // open the evaluation at xi*omega for A'
+    // open the evaluation at zeta*omega for A'
     let (h2, open_evals2, gamma2) = batch_open(
         powers, 
         &vec![&a_prime], 
         &vec![&mask_a_prime], 
-        xi / omega, 
+        zeta / omega, 
         false, 
         rng
     );
@@ -139,7 +139,7 @@ pub fn prove<E: Pairing, R: RngCore>(
             vec![cm_a_prime],
         ],
         witnesses: vec![h1, h2],
-        points: vec![xi, xi / omega],
+        points: vec![zeta, zeta / omega],
         open_evals: vec![open_evals1, open_evals2],
         gammas: vec![gamma1, gamma2],
     };
@@ -165,8 +165,8 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q1 = proof.commitments[0][2];
     let cm_q2 = proof.commitments[0][3];
 
-    // verify xi is correct
-    let xi = calculate_hash(
+    // verify zeta is correct
+    let zeta = calculate_hash(
             &vec![
                 HashBox::<E>{ object: cm_a_prime.0 },
                 HashBox::<E>{ object: cm_s_prime.0 },
@@ -174,35 +174,35 @@ pub fn verify<E: Pairing, R: RngCore>(
                 HashBox::<E>{ object: cm_q2.0 },
             ]
         );
-    assert_eq!(xi, proof.points[0]);
+    assert_eq!(zeta, proof.points[0]);
 
-    // verify xi*omega is correct
+    // verify zeta*omega is correct
     let omega = domain.element(1);
-    assert_eq!(xi / omega, proof.points[1]);
+    assert_eq!(zeta / omega, proof.points[1]);
 
-    // read the evaluations of A'(xi), S'(xi), Q1(xi), A'(xi*omega)
-    let a_prime_xi = &proof.open_evals[0][0].into_plain_value().0;
-    let s_prime_xi = &proof.open_evals[0][1].into_plain_value().0;
-    let q1_xi = &proof.open_evals[0][2].into_plain_value().0;
-    let a_prime_xi_omega = &proof.open_evals[1][0].into_plain_value().0;
+    // read the evaluations of A'(zeta), S'(zeta), Q1(zeta), A'(zeta*omega)
+    let a_prime_zeta = &proof.open_evals[0][0].into_plain_value().0;
+    let s_prime_zeta = &proof.open_evals[0][1].into_plain_value().0;
+    let q1_zeta = &proof.open_evals[0][2].into_plain_value().0;
+    let a_prime_zeta_omega = &proof.open_evals[1][0].into_plain_value().0;
 
-    // evaluate Z(X) at xi
+    // evaluate Z(X) at zeta
     let z = domain.vanishing_polynomial();
-    let z_xi = z.evaluate(&xi);
+    let z_zeta = z.evaluate(&zeta);
 
     // verify [A'(X) - A'(X/w)] * [A'(X) - S'(X)] = Z(X) * Q1(X)
-    let lhs = (*a_prime_xi - a_prime_xi_omega).mul(*a_prime_xi - s_prime_xi);
-    let rhs = z_xi.mul(q1_xi);
+    let lhs = (*a_prime_zeta - a_prime_zeta_omega).mul(*a_prime_zeta - s_prime_zeta);
+    let rhs = z_zeta.mul(q1_zeta);
     assert_eq!(lhs, rhs);
 
-    let q2_xi = &proof.open_evals[0][3].into_plain_value().0;
+    let q2_zeta = &proof.open_evals[0][3].into_plain_value().0;
 
     // verify L0(X) * [A'(X) - S'(X)] = Z(X) * Q2(X)
     let x_minus_one = DenseOrSparsePolynomial::from(DensePolynomial::from_coefficients_vec(vec![-E::ScalarField::one(), E::ScalarField::one()]));
     let (l0, _) = DenseOrSparsePolynomial::from(z).divide_with_q_and_r(&x_minus_one).unwrap();
-    let l0_xi = l0.evaluate(&xi);
-    let lhs = l0_xi.mul(*a_prime_xi - s_prime_xi);
-    let rhs = z_xi.mul(q2_xi);
+    let l0_zeta = l0.evaluate(&zeta);
+    let lhs = l0_zeta.mul(*a_prime_zeta - s_prime_zeta);
+    let rhs = z_zeta.mul(q2_zeta);
     assert_eq!(lhs, rhs);
 
     batch_check(vk, proof, rng);
@@ -357,8 +357,8 @@ pub fn prove_v2<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    // calculate the challenge, xi
-    let xi = calculate_hash(
+    // calculate the challenge, zeta
+    let zeta = calculate_hash(
         &vec![
                 HashBox::<E>{ object: cm_a.0 },
                 HashBox::<E>{ object: cm_s.0 },
@@ -372,34 +372,34 @@ pub fn prove_v2<E: Pairing, R: RngCore>(
             ]
         );
 
-    // open the evaluations at xi for A, S, B, A', S', Q1, Q2, Q3, and Q4
+    // open the evaluations at zeta for A, S, B, A', S', Q1, Q2, Q3, and Q4
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
         &vec![&a, &s, &b, &a_prime, &s_prime, &q1, &q2, &q3, &q4], 
         &vec![&mask_a, &mask_s, &mask_b, &mask_a_prime, &mask_s_prime, &mask_q1, &mask_q2, &mask_q3, &mask_q4], 
-        xi, 
+        zeta, 
         false, 
         rng
     );
 
     let omega = domain.element(1);
 
-    // open the evaluation at xi/omega for A'
+    // open the evaluation at zeta/omega for A'
     let (h2, open_evals2, gamma2) = batch_open(
         powers, 
         &vec![&a_prime], 
         &vec![&mask_a_prime], 
-        xi / omega, 
+        zeta / omega, 
         false, 
         rng
     );
 
-    // open the evaluation at xi * omega for B
+    // open the evaluation at zeta * omega for B
     let (h3, open_evals3, gamma3) = batch_open(
         powers, 
         &vec![&b], 
         &vec![&mask_b], 
-        xi * omega, 
+        zeta * omega, 
         false, 
         rng
     );
@@ -411,7 +411,7 @@ pub fn prove_v2<E: Pairing, R: RngCore>(
             vec![cm_b],
         ],
         witnesses: vec![h1, h2, h3],
-        points: vec![xi, xi / omega, xi * omega],
+        points: vec![zeta, zeta / omega, zeta * omega],
         open_evals: vec![
             open_evals1,
             open_evals2,
@@ -437,8 +437,8 @@ pub fn verify_v2<E: Pairing, R: RngCore>(
     let cm_q3 = proof.commitments[0][7];
     let cm_q4 = proof.commitments[0][8];
 
-    // verify xi is correct
-    let xi = calculate_hash(
+    // verify zeta is correct
+    let zeta = calculate_hash(
             &vec![
                 HashBox::<E>{ object: cm_a.0 },
                 HashBox::<E>{ object: cm_s.0 },
@@ -451,38 +451,38 @@ pub fn verify_v2<E: Pairing, R: RngCore>(
                 HashBox::<E>{ object: cm_q4.0 },
             ]
         );
-    assert_eq!(xi, proof.points[0]);
+    assert_eq!(zeta, proof.points[0]);
 
-    // verify xi / omega is correct
+    // verify zeta / omega is correct
     let omega = domain.element(1);
-    assert_eq!(xi / omega, proof.points[1]);
+    assert_eq!(zeta / omega, proof.points[1]);
 
-    // verify xi * omega is correct
-    assert_eq!(xi * omega, proof.points[2]);
+    // verify zeta * omega is correct
+    assert_eq!(zeta * omega, proof.points[2]);
 
-    // read the evaluations of A'(xi), S'(xi), Q1(xi), A'(xi*omega)
-    let a_prime_xi = &proof.open_evals[0][3].into_plain_value().0;
-    let s_prime_xi = &proof.open_evals[0][4].into_plain_value().0;
-    let q1_xi = &proof.open_evals[0][5].into_plain_value().0;
-    let a_prime_xi_omega = &proof.open_evals[1][0].into_plain_value().0;
+    // read the evaluations of A'(zeta), S'(zeta), Q1(zeta), A'(zeta*omega)
+    let a_prime_zeta = &proof.open_evals[0][3].into_plain_value().0;
+    let s_prime_zeta = &proof.open_evals[0][4].into_plain_value().0;
+    let q1_zeta = &proof.open_evals[0][5].into_plain_value().0;
+    let a_prime_zeta_omega = &proof.open_evals[1][0].into_plain_value().0;
 
-    // evaluate Z(X) at xi
+    // evaluate Z(X) at zeta
     let z = domain.vanishing_polynomial();
-    let z_xi = z.evaluate(&xi);
+    let z_zeta = z.evaluate(&zeta);
 
     // verify [A'(X) - A'(X/w)] * [A'(X) - S'(X)] = Z(X) * Q1(X)
-    let lhs = (*a_prime_xi - a_prime_xi_omega).mul(*a_prime_xi - s_prime_xi);
-    let rhs = z_xi.mul(q1_xi);
+    let lhs = (*a_prime_zeta - a_prime_zeta_omega).mul(*a_prime_zeta - s_prime_zeta);
+    let rhs = z_zeta.mul(q1_zeta);
     assert_eq!(lhs, rhs);
 
-    let q2_xi = &proof.open_evals[0][6].into_plain_value().0;
+    let q2_zeta = &proof.open_evals[0][6].into_plain_value().0;
 
     // verify L0(X) * [A'(X) - S'(X)] = Z(X) * Q2(X)
     let x_minus_one = DenseOrSparsePolynomial::from(DensePolynomial::from_coefficients_vec(vec![-E::ScalarField::one(), E::ScalarField::one()]));
     let (l0, _) = DenseOrSparsePolynomial::from(z).divide_with_q_and_r(&x_minus_one).unwrap();
-    let l0_xi = l0.evaluate(&xi);
-    let lhs = l0_xi.mul(*a_prime_xi - s_prime_xi);
-    let rhs = z_xi.mul(q2_xi);
+    let l0_zeta = l0.evaluate(&zeta);
+    let lhs = l0_zeta.mul(*a_prime_zeta - s_prime_zeta);
+    let rhs = z_zeta.mul(q2_zeta);
     assert_eq!(lhs, rhs);
 
     let beta: E::ScalarField = calculate_hash(
@@ -499,21 +499,21 @@ pub fn verify_v2<E: Pairing, R: RngCore>(
         ]
     );
 
-    let a_xi = &proof.open_evals[0][0].into_plain_value().0;
-    let s_xi = &proof.open_evals[0][1].into_plain_value().0;
-    let b_xi = &proof.open_evals[0][2].into_plain_value().0;
-    let q3_xi = &proof.open_evals[0][7].into_plain_value().0;
-    let b_xi_omega = &proof.open_evals[2][0].into_plain_value().0;
+    let a_zeta = &proof.open_evals[0][0].into_plain_value().0;
+    let s_zeta = &proof.open_evals[0][1].into_plain_value().0;
+    let b_zeta = &proof.open_evals[0][2].into_plain_value().0;
+    let q3_zeta = &proof.open_evals[0][7].into_plain_value().0;
+    let b_zeta_omega = &proof.open_evals[2][0].into_plain_value().0;
     let last_root = domain.element(domain.size() - 1);
-    // verify [B(xi*w) * (A'(xi) + beta) * (S'(xi) + gamma) - B(xi) * (A(xi) + beta) * (S(xi) + gamma)] * (xi - w^{n-1}) = Z(xi) * Q3(xi)
-    let lhs = (b_xi_omega.mul(*a_prime_xi + beta).mul(*s_prime_xi + gamma) - b_xi.mul(*a_xi + beta).mul(*s_xi + gamma)).mul(xi - last_root);
-    let rhs = z_xi.mul(q3_xi);
+    // verify [B(zeta*w) * (A'(zeta) + beta) * (S'(zeta) + gamma) - B(zeta) * (A(zeta) + beta) * (S(zeta) + gamma)] * (zeta - w^{n-1}) = Z(zeta) * Q3(zeta)
+    let lhs = (b_zeta_omega.mul(*a_prime_zeta + beta).mul(*s_prime_zeta + gamma) - b_zeta.mul(*a_zeta + beta).mul(*s_zeta + gamma)).mul(zeta - last_root);
+    let rhs = z_zeta.mul(q3_zeta);
     assert_eq!(lhs, rhs);
 
-    let q4_xi = &proof.open_evals[0][8].into_plain_value().0;
-    // verify (B(xi) - 1) / [(xi - w^0) * (xi - w^{n-1})] = Q4(xi)
-    let lhs = *b_xi - E::ScalarField::one();
-    let rhs = q4_xi.mul(xi - E::ScalarField::one()).mul(xi - last_root);
+    let q4_zeta = &proof.open_evals[0][8].into_plain_value().0;
+    // verify (B(zeta) - 1) / [(zeta - w^0) * (zeta - w^{n-1})] = Q4(zeta)
+    let lhs = *b_zeta - E::ScalarField::one();
+    let rhs = q4_zeta.mul(zeta - E::ScalarField::one()).mul(zeta - last_root);
     assert_eq!(lhs, rhs);
 
     batch_check(vk, proof, rng);
