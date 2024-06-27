@@ -6,7 +6,7 @@ use ark_poly::{univariate::{DenseOrSparsePolynomial, DensePolynomial}, DenseUVPo
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One};
 
-use crate::utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox};
+use crate::utils::{batch_check, batch_open, BatchCheckProof, Transcript};
 
 /// [unoptimmized]
 /// to prove a claimed value is the product of some other values
@@ -58,14 +58,11 @@ pub fn prove<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenge, zeta
-    let zeta = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_pa.0 },
-                HashBox::<E>{ object: cm_pb.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_pa.0, cm_pb.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open the evaluations at zeta for P_A, P_B, Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
@@ -142,14 +139,11 @@ pub fn verify_evaluations<E: Pairing, R: RngCore>(
     let cm_q2 = proof.commitments[0][3];
 
     // verify zeta is correct
-    let zeta = calculate_hash(
-            &vec![
-                HashBox::<E>{ object: cm_pa.0 },
-                HashBox::<E>{ object: cm_pb.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_pa.0, cm_pb.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
     assert_eq!(zeta, proof.points[0]);
 
     // verify zeta*omega is correct

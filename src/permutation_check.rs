@@ -3,7 +3,7 @@ use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, Polyn
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One};
 
-use crate::{prod_check, utils::{batch_open, calculate_hash, BatchCheckProof, HashBox}};
+use crate::{prod_check, utils::{batch_open, BatchCheckProof, Transcript}};
 
 /// to prove the evaluations of F(X) are the permutation of the evaluations of G(X)
 pub fn prove<E: Pairing, R: RngCore>(
@@ -49,12 +49,11 @@ pub fn prove<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenge, r, by hashing the commitments to F and G
-    let r = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_g.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0,
+    ]);
+    let r = transcript.append_and_digest::<E>("r".to_string());
 
     // compute the evaluations such that r - F(X) and r - G(X)
     let r_minus_f: Vec<_> = f_evals.iter().map(| eval | { r - eval }).collect();
@@ -70,15 +69,11 @@ pub fn prove<E: Pairing, R: RngCore>(
     let cm_q2 = prod_check_proof.commitments[0][4];
 
     // compute zeta
-    let zeta = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_r_minus_f.0 },
-            HashBox::<E>{ object: cm_r_minus_g.0 },
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_r_minus_f.0, cm_r_minus_g.0, cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open F(zeta) and G(zeta)
     let (h, open_evals, gamma) = batch_open(
@@ -115,12 +110,11 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_g = proof.commitments[3][1];
 
     // compute the challenge, r
-    let r = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_g.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0,
+    ]);
+    let r = transcript.append_and_digest::<E>("r".to_string());
 
     let r_minus_f_zeta = &proof.open_evals[0][0].into_plain_value().0;
     let r_minus_g_zeta = &proof.open_evals[0][1].into_plain_value().0;

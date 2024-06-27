@@ -6,7 +6,7 @@ use ark_poly::{univariate::{DenseOrSparsePolynomial, DensePolynomial}, DenseUVPo
 use ark_poly_commit::kzg10::{Commitment, Powers, VerifierKey, KZG10};
 use ark_std::{iterable::Iterable, rand::RngCore, Zero, One};
 
-use crate::{permutation_check, utils::{batch_check, batch_open, calculate_hash, construct_accumulator_for_prod_check, BatchCheckProof, HashBox}};
+use crate::{permutation_check, utils::{batch_check, batch_open, construct_accumulator_for_prod_check, BatchCheckProof, Transcript}};
 
 /// the lookup argument in halo2
 /// [unoptimized] using two permutation checks
@@ -102,14 +102,11 @@ pub fn prove<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenge, zeta
-    let zeta = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_a_prime.0 },
-                HashBox::<E>{ object: cm_s_prime.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a_prime.0, cm_s_prime.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open the evaluations at zeta for A', S', Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
@@ -166,14 +163,11 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q2 = proof.commitments[0][3];
 
     // verify zeta is correct
-    let zeta = calculate_hash(
-            &vec![
-                HashBox::<E>{ object: cm_a_prime.0 },
-                HashBox::<E>{ object: cm_s_prime.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a_prime.0, cm_s_prime.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
     assert_eq!(zeta, proof.points[0]);
 
     // verify zeta*omega is correct
@@ -358,19 +352,11 @@ pub fn prove_v2<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenge, zeta
-    let zeta = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_a.0 },
-                HashBox::<E>{ object: cm_s.0 },
-                HashBox::<E>{ object: cm_b.0 },
-                HashBox::<E>{ object: cm_a_prime.0 },
-                HashBox::<E>{ object: cm_s_prime.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-                HashBox::<E>{ object: cm_q3.0 },
-                HashBox::<E>{ object: cm_q4.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a.0, cm_s.0, cm_b.0, cm_a_prime.0, cm_s_prime.0, cm_q1.0, cm_q2.0, cm_q3.0, cm_q4.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open the evaluations at zeta for A, S, B, A', S', Q1, Q2, Q3, and Q4
     let (h1, open_evals1, gamma1) = batch_open(
@@ -438,19 +424,11 @@ pub fn verify_v2<E: Pairing, R: RngCore>(
     let cm_q4 = proof.commitments[0][8];
 
     // verify zeta is correct
-    let zeta = calculate_hash(
-            &vec![
-                HashBox::<E>{ object: cm_a.0 },
-                HashBox::<E>{ object: cm_s.0 },
-                HashBox::<E>{ object: cm_b.0 },
-                HashBox::<E>{ object: cm_a_prime.0 },
-                HashBox::<E>{ object: cm_s_prime.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-                HashBox::<E>{ object: cm_q3.0 },
-                HashBox::<E>{ object: cm_q4.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a.0, cm_s.0, cm_b.0, cm_a_prime.0, cm_s_prime.0, cm_q1.0, cm_q2.0, cm_q3.0, cm_q4.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
     assert_eq!(zeta, proof.points[0]);
 
     // verify zeta / omega is correct
@@ -485,19 +463,12 @@ pub fn verify_v2<E: Pairing, R: RngCore>(
     let rhs = z_zeta.mul(q2_zeta);
     assert_eq!(lhs, rhs);
 
-    let beta: E::ScalarField = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_a.0 },
-            HashBox::<E>{ object: cm_a_prime.0 },
-        ]
-    );
-
-    let gamma: E::ScalarField = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_s.0 },
-            HashBox::<E>{ object: cm_s_prime.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a.0, cm_s.0, cm_a_prime.0, cm_s_prime.0,
+    ]);
+    let beta = transcript.append_and_digest::<E>("beta".to_string());
+    let gamma = transcript.append_and_digest::<E>("gamma".to_string());
 
     let a_zeta = &proof.open_evals[0][0].into_plain_value().0;
     let s_zeta = &proof.open_evals[0][1].into_plain_value().0;
@@ -530,19 +501,12 @@ fn prove_v2_permutation<E: Pairing>(
     cm_s_prime: &Commitment<E>,
     domain: Radix2EvaluationDomain<E::ScalarField>,
 ) -> (DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>, DensePolynomial<E::ScalarField>) {
-    let beta: E::ScalarField = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_a.0 },
-            HashBox::<E>{ object: cm_a_prime.0 },
-        ]
-    );
-
-    let gamma: E::ScalarField = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_s.0 },
-            HashBox::<E>{ object: cm_s_prime.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_a.0, cm_s.0, cm_a_prime.0, cm_s_prime.0,
+    ]);
+    let beta = transcript.append_and_digest::<E>("beta".to_string());
+    let gamma = transcript.append_and_digest::<E>("gamma".to_string());
 
     let a_evals = a.clone().evaluate_over_domain(domain).evals;
     let s_evals = s.clone().evaluate_over_domain(domain).evals;

@@ -10,23 +10,6 @@ use num_bigint::BigUint;
 
 use sha2::{Digest, Sha256};
 
-#[derive(Debug)]
-pub struct HashBox<E: Pairing> {
-    pub object: E::G1Affine,
-}
-
-pub fn calculate_hash<E: Pairing>(objects: &Vec<HashBox<E>>) -> E::ScalarField {
-    let mut hasher = Sha256::default();
-    let mut msg: String = "".to_owned();
-    for obj in objects {
-        msg.push_str(&format!("{:?}", obj));
-    }
-    hasher.update(msg);
-    let digest = hasher.finalize();
-    let num = BigUint::from_bytes_le(&digest);
-    E::ScalarField::from(num)
-}
-
 pub struct Transcript {
     messages: Vec<String>,
 }

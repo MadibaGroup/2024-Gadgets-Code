@@ -5,7 +5,7 @@ use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, Polyn
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One};
 
-use crate::{prod_check, utils::{batch_open, calculate_hash, BatchCheckProof, HashBox}};
+use crate::{prod_check, utils::{batch_open, BatchCheckProof, Transcript}};
 
 /// to prove F(X) = G(sigma(X)) on the domain
 pub fn prove<E: Pairing, R: RngCore>(
@@ -68,18 +68,12 @@ pub fn prove<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenges a and b
-    let a = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_s.0 },
-            ]
-        );
-    let b = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_g.0 },
-                HashBox::<E>{ object: cm_s.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0, cm_s.0,
+    ]);
+    let a = transcript.append_and_digest::<E>("a".to_string());
+    let b = transcript.append_and_digest::<E>("b".to_string());
 
     // compute the evaluations such that the product of [a - b * S(X) - F(X)] and [a - b * X - G(X)]
     let numerator: Vec<_> = f_evals.iter().zip(s_evals)
@@ -104,15 +98,11 @@ pub fn prove<E: Pairing, R: RngCore>(
     let cm_q2 = prod_check_proof.commitments[0][4];
 
     // compute zeta
-    let zeta = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_numerator.0 },
-            HashBox::<E>{ object: cm_denominator.0 },
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_numerator.0, cm_denominator.0, cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open F(zeta) and G(zeta)
     let (h, open_evals, gamma) = batch_open(
@@ -150,18 +140,12 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_s = proof.commitments[3][2];
 
     // calculate the challenges a and b
-    let a = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_s.0 },
-            ]
-        );
-    let b = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_g.0 },
-                HashBox::<E>{ object: cm_s.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0, cm_s.0,
+    ]);
+    let a = transcript.append_and_digest::<E>("a".to_string());
+    let b = transcript.append_and_digest::<E>("b".to_string());
 
     let a_minus_bs_f_zeta = &proof.open_evals[0][0].into_plain_value().0;
     let a_minus_b_g_zeta = &proof.open_evals[0][1].into_plain_value().0;
@@ -176,15 +160,11 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q2 = proof.commitments[0][4];
 
     // compute zeta
-    let zeta = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_numerator.0 },
-            HashBox::<E>{ object: cm_denominator.0 },
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_numerator.0, cm_denominator.0, cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // verify a - b * S(zeta) - F(zeta) and a - b * zeta - G(zeta) are correct
     assert_eq!(a - b.mul(s_zeta) - f_zeta, *a_minus_bs_f_zeta);

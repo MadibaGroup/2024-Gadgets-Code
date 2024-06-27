@@ -6,7 +6,7 @@ use ark_poly::{univariate::{DenseOrSparsePolynomial, DensePolynomial}, DenseUVPo
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One, Zero};
 
-use crate::utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox};
+use crate::utils::{batch_check, batch_open, BatchCheckProof, Transcript};
 
 /// to prove the product of F(X) is equal to the product of g(X)
 /// normally used for permutation check
@@ -68,15 +68,11 @@ pub fn prove<E: Pairing, R: RngCore>(
         ).unwrap();
 
     // calculate the challenge, zeta
-    let zeta = calculate_hash(
-        &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_g.0 },
-                HashBox::<E>{ object: cm_t.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0, cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     // open the evaluations at zeta for F, G, T, Q1 and Q2
     let (h1, open_evals1, gamma1) = batch_open(
@@ -145,15 +141,11 @@ pub fn verify<E: Pairing, R: RngCore>(
     let cm_q2 = proof.commitments[0][4];
 
     // verify zeta is correct
-    let zeta = calculate_hash(
-            &vec![
-                HashBox::<E>{ object: cm_f.0 },
-                HashBox::<E>{ object: cm_g.0 },
-                HashBox::<E>{ object: cm_t.0 },
-                HashBox::<E>{ object: cm_q1.0 },
-                HashBox::<E>{ object: cm_q2.0 },
-            ]
-        );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_f.0, cm_g.0, cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
     assert_eq!(zeta, proof.points[0]);
 
     // verify zeta*omega is correct

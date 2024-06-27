@@ -5,7 +5,7 @@ use ark_poly::{univariate::{DenseOrSparsePolynomial, DensePolynomial}, DenseUVPo
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
 use ark_std::{rand::RngCore, One, Zero};
 
-use crate::utils::{batch_check, batch_open, calculate_hash, BatchCheckProof, HashBox};
+use crate::utils::{batch_check, batch_open, BatchCheckProof, Transcript};
 
 pub fn prove<E: Pairing, R: RngCore>(
     powers: &Powers<E>,
@@ -32,15 +32,6 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(t.degree()), 
             Some(rng)
         ).unwrap();
-
-    // commit to T(Xw)
-    let (cm_t_shifted, mask_t_shifted) = 
-        KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
-            &powers, 
-            &t_shifted, 
-            Some(t_shifted.degree()), 
-            Some(rng)
-        ).unwrap();
     
     // commit to Q1(X)
     let (cm_q1, mask_q1) = 
@@ -60,19 +51,16 @@ pub fn prove<E: Pairing, R: RngCore>(
             Some(rng)
         ).unwrap();
 
-    let zeta = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_t_shifted.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
 
     let (h1, open_evals1, gamma1) = batch_open(
         powers, 
-        &vec![&t, &t_shifted, &q1, &q2], 
-        &vec![&mask_t, &mask_t_shifted, &mask_q1, &mask_q2], 
+        &vec![&t, &q1, &q2], 
+        &vec![&mask_t, &mask_q1, &mask_q2], 
         zeta, 
         false,
         rng
@@ -81,8 +69,8 @@ pub fn prove<E: Pairing, R: RngCore>(
     let omega = domain.element(1);
     let (h2, open_evals2, gamma2) = batch_open(
         powers, 
-        &vec![&t_shifted], 
-        &vec![&mask_t_shifted], 
+        &vec![&t], 
+        &vec![&mask_t],
         zeta * omega, 
         false,
         rng
@@ -99,8 +87,8 @@ pub fn prove<E: Pairing, R: RngCore>(
 
     BatchCheckProof {
         commitments: vec![
-            vec![cm_t, cm_t_shifted, cm_q1, cm_q2],
-            vec![cm_t_shifted],
+            vec![cm_t, cm_q1, cm_q2],
+            vec![cm_t],
             vec![cm_t],
         ],
         witnesses: vec![h1, h2, h3],
@@ -121,19 +109,15 @@ pub fn verify<E: Pairing, R: RngCore>(
     rng: &mut R,
 ) {
     let cm_t = proof.commitments[0][0];
-    let cm_t_shifted = proof.commitments[0][1];
-    let cm_q1 = proof.commitments[0][2];
-    let cm_q2 = proof.commitments[0][3];
+    let cm_q1 = proof.commitments[0][1];
+    let cm_q2 = proof.commitments[0][2];
 
     // verify zeta is correct
-    let zeta = calculate_hash(
-        &vec![
-            HashBox::<E>{ object: cm_t.0 },
-            HashBox::<E>{ object: cm_t_shifted.0 },
-            HashBox::<E>{ object: cm_q1.0 },
-            HashBox::<E>{ object: cm_q2.0 },
-        ]
-    );
+    let mut transcript = Transcript::new();
+    transcript.append_affines::<E>(&vec![
+        cm_t.0, cm_q1.0, cm_q2.0,
+    ]);
+    let zeta = transcript.append_and_digest::<E>("zeta".to_string());
     assert_eq!(zeta, proof.points[0]);
 
     // verify zeta * omega is correct
@@ -142,9 +126,9 @@ pub fn verify<E: Pairing, R: RngCore>(
 
     // read the evaluations of T(zeta), T(zeta * omega), Q1(zeta), Q2(zeta)
     let t_zeta = proof.open_evals[0][0].into_plain_value().0;
-    let t_shifted_zeta = proof.open_evals[0][1].into_plain_value().0;
-    let q1_zeta = proof.open_evals[0][2].into_plain_value().0;
-    let q2_zeta = proof.open_evals[0][3].into_plain_value().0;
+    let q1_zeta = proof.open_evals[0][1].into_plain_value().0;
+    let q2_zeta = proof.open_evals[0][2].into_plain_value().0;
+    let t_zeta_omega = proof.open_evals[1][0].into_plain_value().0;
 
     // evaluate Z(X) at zeta
     let z = domain.vanishing_polynomial();
@@ -162,7 +146,7 @@ pub fn verify<E: Pairing, R: RngCore>(
 
     let two = E::ScalarField::from(2u32);
     // verify [T(zeta) - 2 * T(zeta * omega)] * [T(zeta) - 2 * T(zeta * omega) - 1] * (zeta - w^{k-1}) = Q2(zeta) * Z(zeta)
-    let lhs = (t_zeta - two * t_shifted_zeta).mul(t_zeta - two * t_shifted_zeta - one).mul(zeta - last_root);
+    let lhs = (t_zeta - two * t_zeta_omega).mul(t_zeta - two * t_zeta_omega - one).mul(zeta - last_root);
     let rhs = q2_zeta.mul(z_zeta);
     assert_eq!(lhs, rhs);
 
